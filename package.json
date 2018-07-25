@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "googleapis": "22.2.0",
-    "@google-cloud/datastore": "^1.4.1"
+    "@google-cloud/datastore": "^1.4.1",
+    "axios": "^0.16.0"
   },
   "devDependencies": {
     "@google-cloud/nodejs-repo-tools": "2.1.0",

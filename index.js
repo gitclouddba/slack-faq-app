@@ -18,22 +18,90 @@
 const Datastore = require('@google-cloud/datastore');
 const datastore = new Datastore();
 
+const createFaqTemplate = require('./createFaqDialog');
+const axios = require('axios');
+const qs = require('querystring');
 
 /**
  * Verify that the webhook request came from Slack.
  *
  * @param {object} body The body of the request.
  * @param {string} body.token The Slack token to be verified.
- * Expect Slack token to be avaiable in SLACK_TOKEN environment variable
+ * Expect Slack token to be avaiable in SLACK_VERIFICATION_TOKEN environment variable
  */
 function verifyWebhook (body) {
-  if (!body || body.token !== process.env.SLACK_TOKEN) {
-    var s = 'received token: ' + body.token + ' expected token: ' + process.env.SLACK_TOKEN
+  if (!body || body.token !== process.env.SLACK_VERIFICATION_TOKEN) {
+    var s = 'received token: ' + body.token + ' expected token: ' + process.env.SLACK_VERIFICATION_TOKEN
     console.log(s)
     const error = new Error('Invalid credentials');
     error.code = 401;
     throw error;
   }
+}
+
+
+/**
+ * Receive a FAQ creation form
+ *
+ * Trigger this function by making a POST request with a payload to:
+ * https://[YOUR_REGION].[YOUR_PROJECT_ID].cloudfunctions.net/recvFaqForm
+ *
+ * @example
+ * curl -X POST "https://us-central1.your-project-id.cloudfunctions.net/recvFaqForm" --data '{"token":"[YOUR_SLACK_VERIFICATION_TOKEN]","text":"list"}'
+ *
+ * @param {object} req Cloud Function request object.
+ * @param {object} req.body The request payload.
+ * @param {string} req.body.token Slack's verification token.
+ * @param {string} req.body.payload payload of the form interation
+ * @param {object} res Cloud Function response object.
+ */
+exports.recvFaqForm = (req, res) => {
+  return Promise.resolve()
+    .then(() => {
+      if (req.method !== 'POST') {
+        const error = new Error('Only POST requests are accepted');
+        error.code = 405;
+        throw error;
+      }
+
+      const payload = JSON.parse(req.body.payload);
+
+      // Verify that this request came from Slack
+      verifyWebhook(payload);
+
+      if ( payload.type != 'dialog_submission' ) {
+        const error = new Error('Not a dialog submission');
+        error.code = 405;
+        throw error;
+      }
+
+      console.log(payload.submission);
+      const tag = payload.submission.tag;
+      const q = datastore
+                  .createQuery('slack-faq-entry')
+                  .filter('tag','=',tag);
+      return datastore
+        .runQuery(q)
+        .then(results => {
+          const faqs = results[0];
+          if (faqs.length > 0) {
+            console.log('Tag ' + tag + ' already in use');
+            return '{"errors":[{"name":"tag","error":"The tag ' + tag + ' is already in use"}]}';
+          } else {
+            console.log('Tag ' + tag + ' is unused, calling addFAQ()');
+            return addFAQ(payload.submission);
+          }
+        })
+    })
+    .then((response) => {
+      // Send the formatted message back to Slack
+      res.send(response);
+    })
+    .catch((err) => {
+      console.error(err);
+      res.status(err.code || 500).send(err);
+      return Promise.reject(err);
+    })
 }
 
 
@@ -44,7 +112,7 @@ function verifyWebhook (body) {
  * https://[YOUR_REGION].[YOUR_PROJECT_ID].cloudfunctions.net/slackFAQ
  *
  * @example
- * curl -X POST "https://us-central1.your-project-id.cloudfunctions.net/kgSearch" --data '{"token":"[YOUR_SLACK_TOKEN]","text":"list"}'
+ * curl -X POST "https://us-central1.your-project-id.cloudfunctions.net/slackFAQ" --data '{"token":"[YOUR_SLACK_VERIFICATION_TOKEN]","text":"list"}'
  *
  * @param {object} req Cloud Function request object.
  * @param {object} req.body The request payload.
@@ -67,15 +135,26 @@ exports.slackFAQ = (req, res) => {
       var cmd_list = req.body.text.split(' ')
 
       switch(cmd_list[0]) {
-        case 'add':
-          console.log('calling addFAQ()');
-          return addFAQ();
         case 'list':
-          console.log('calling listFAQs()');
           return listFAQs();
         case 'show':
-          console.log('calling getFAQ()');
           return getFAQ(cmd_list[1]);
+        case 'add':
+          const dialog = createFaqTemplate( req.body.trigger_id, req.body.text );
+          return axios.post('https://slack.com/api/dialog.open', qs.stringify(dialog))
+            .then(function(response) {
+              console.log(response.data);
+              if ( response.data.ok ) {
+                return(formatSimpleMessage('Opened form for adding FAQ'));
+              }
+              else {
+                return(formatSimpleMessage('Form open failed: ' + response.data.error));
+              }
+            })
+            .catch(function(error) {
+              console.log(error);
+              return(formatSimpleMessage('Sorry, opening form for adding FAQ failed.'));
+            });
         case "help":
           return getFAQ("help");
         default:
@@ -95,7 +174,7 @@ exports.slackFAQ = (req, res) => {
       res.status(err.code || 500).send(err);
       return Promise.reject(err);
     });
-};
+}
 
 
 function formatSimpleMessage (response) {
@@ -129,7 +208,7 @@ function listFAQs() {
 }
 
 
-function addFAQ() {
+function addFAQ(submission) {
   const faqKey = datastore.key('slack-faq-entry');
   const entity = {
     key: faqKey,
@@ -139,13 +218,18 @@ function addFAQ() {
         value: new Date().toJSON(),
       },
       {
+        name: 'tag',
+        value: submission.tag,
+        excludeFromIndexes: false,
+      },
+      {
         name: 'title',
-        value: 'This is the title',
+        value: submission.title,
         excludeFromIndexes: true,
       },
       {
         name: 'content',
-        value: 'This is the content',
+        value: submission.content,
         excludeFromIndexes: false,
       },
     ],
@@ -154,10 +238,11 @@ function addFAQ() {
   return datastore
     .save(entity)
     .then(() => {
-      return formatSimpleMessage(`FAQ ${faqKey.id} created successfully.`);
+      return '';
     })
     .catch(err => {
       console.error('ERROR:', err);
+      return '{"errors":[{"name":"content","error":"Failed to add FAQ to datastore"}]}';
     });
 }
 
