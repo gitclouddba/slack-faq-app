@@ -16,5 +16,5 @@ fi
 gcloud beta functions deploy slackFAQ --trigger-http  \
   --set-env-vars "SLACK_VERIFICATION_TOKEN=${SLACK_VERIFICATION_TOKEN},SLACK_ACCESS_TOKEN=${SLACK_ACCESS_TOKEN}"
 
-gcloud beta functions deploy recvFaqForm --trigger-http  \
-  --set-env-vars "SLACK_VERIFICATION_TOKEN=${SLACK_VERIFICATION_TOKEN},SLACK_ACCESS_TOKEN=${SLACK_ACCESS_TOKEN}"
+#gcloud beta functions deploy recvFaqForm --trigger-http  \
+#  --set-env-vars "SLACK_VERIFICATION_TOKEN=${SLACK_VERIFICATION_TOKEN},SLACK_ACCESS_TOKEN=${SLACK_ACCESS_TOKEN}"

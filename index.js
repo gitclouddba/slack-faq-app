@@ -55,7 +55,7 @@ function verifyWebhook (body) {
  * @param {string} req.body.payload payload of the form interation
  * @param {object} res Cloud Function response object.
  */
-exports.recvFaqForm = (req, res) => {
+function recvFaqForm (req, res) {
   return Promise.resolve()
     .then(() => {
       if (req.method !== 'POST') {
@@ -70,6 +70,7 @@ exports.recvFaqForm = (req, res) => {
       verifyWebhook(payload);
 
       if ( payload.type != 'dialog_submission' ) {
+        console.log("Error: got payload.type " + payload.type);
         const error = new Error('Not a dialog submission');
         error.code = 405;
         throw error;
@@ -124,13 +125,27 @@ exports.slackFAQ = (req, res) => {
   return Promise.resolve()
     .then(() => {
       if (req.method !== 'POST') {
-        const error = new Error('Only POST requests are accepted');
-        error.code = 405;
-        throw error;
+        if ( req.get("User-Agent") == "GoogleStackdriverMonitoring-UptimeChecks(https://cloud.google.com/monitoring)" ) {
+          const healthResponse = { status: 'Ready' };
+          return healthResponse;
+        }
+        else {
+          const error = new Error('Only POST requests are accepted');
+          error.code = 405;
+          throw error;
+        }
+      }
+
+      // Assume receiving form response if req.body contains a payload
+      if ( req.body.payload ) {
+        console.log("payload found, calling recfFaqForm");
+        return recvFaqForm(req, res);
       }
 
       // Verify that this request came from Slack
       verifyWebhook(req.body);
+
+      console.log(req.body);
 
       var cmd_list = req.body.text.split(' ')
 
