@@ -76,7 +76,7 @@ function recvFaqForm (req, res) {
         throw error;
       }
 
-      console.log(payload.submission);
+      console.log(payload);
       const tag = payload.submission.tag;
       const q = datastore
                   .createQuery('slack-faq-entry')
@@ -90,7 +90,7 @@ function recvFaqForm (req, res) {
             return '{"errors":[{"name":"tag","error":"The tag ' + tag + ' is already in use"}]}';
           } else {
             console.log('Tag ' + tag + ' is unused, calling addFAQ()');
-            return addFAQ(payload.submission);
+            return addFAQ(payload);
           }
         })
     })
@@ -223,7 +223,7 @@ function listFAQs() {
 }
 
 
-function addFAQ(submission) {
+function addFAQ(payload) {
   const faqKey = datastore.key('slack-faq-entry');
   const entity = {
     key: faqKey,
@@ -234,18 +234,28 @@ function addFAQ(submission) {
       },
       {
         name: 'tag',
-        value: submission.tag,
+        value: payload.submission.tag,
         excludeFromIndexes: false,
       },
       {
         name: 'title',
-        value: submission.title,
-        excludeFromIndexes: true,
+        value: payload.submission.title,
+        excludeFromIndexes: false,
       },
       {
         name: 'content',
-        value: submission.content,
+        value: payload.submission.content,
         excludeFromIndexes: false,
+      },
+      {
+        name: 'author',
+        value: payload.user.name,
+        excludeFromIndexes: true,
+      },
+      {
+        name: 'channel',
+        value: payload.channel.name,
+        excludeFromIndexes: true,
       },
     ],
   };
