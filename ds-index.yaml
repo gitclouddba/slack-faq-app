@@ -1,0 +1,11 @@
+
+# Datastore composite index definition for Slack FAQ app
+
+indexes:
+
+- kind: slack-faq-entry
+  ancestor: no
+  properties:
+  - name: tag
+  - name: version
+    direction: desc

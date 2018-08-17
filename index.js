@@ -78,19 +78,21 @@ function recvFaqForm (req, res) {
 
       console.log(payload);
       const tag = payload.submission.tag;
-      const q = datastore
-                  .createQuery('slack-faq-entry')
-                  .filter('tag','=',tag);
+      const q = datastore.createQuery('slack-faq-entry')
+                         .filter('tag',tag)
+                         .order('version',{descending: true});
       return datastore
         .runQuery(q)
         .then(results => {
           const faqs = results[0];
           if (faqs.length > 0) {
-            console.log('Tag ' + tag + ' already in use');
-            return '{"errors":[{"name":"tag","error":"The tag ' + tag + ' is already in use"}]}';
+	    const version = String(Number(faqs[0]['version']) + 1);
+            console.log('Tag ' + tag + ' new version ' + version);
+            return addFAQ(payload,version);
+            // return '{"errors":[{"name":"tag","error":"The tag ' + tag + ' is already in use"}]}';
           } else {
-            console.log('Tag ' + tag + ' is unused, calling addFAQ()');
-            return addFAQ(payload);
+            console.log('New tag ' + tag + ' is unused, calling addFAQ()');
+            return addFAQ(payload,1);
           }
         })
     })
@@ -206,6 +208,7 @@ function formatSimpleMessage (response) {
 
 function listFAQs() {
   const q = datastore.createQuery('slack-faq-entry')
+                     .order('version',{descending: true});
   return datastore
     .runQuery(q)
     .then(results => {
@@ -223,7 +226,7 @@ function listFAQs() {
 }
 
 
-function addFAQ(payload) {
+function addFAQ(payload,version) {
   const faqKey = datastore.key('slack-faq-entry');
   const entity = {
     key: faqKey,
@@ -257,6 +260,11 @@ function addFAQ(payload) {
         value: payload.channel.name,
         excludeFromIndexes: true,
       },
+      {
+        name: 'version',
+        value: version,
+        excludeFromIndexes: false,
+      },
     ],
   };
 
@@ -273,9 +281,9 @@ function addFAQ(payload) {
 
 
 function getFAQ(tag) {
-  const q = datastore
-              .createQuery('slack-faq-entry')
-              .filter('tag','=',tag);
+  const q = datastore.createQuery('slack-faq-entry')
+                     .filter('tag',tag)
+                     .order('version', {descending: true});
   return datastore
     .runQuery(q)
     .then(results => {
